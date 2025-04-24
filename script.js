@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PRコックピット
 // @namespace    https://pr-cockpit.com/
-// @version      0.1.0
+// @version      0.2.0
 // @description  コンタクトレポートの機能改善
 // @author       You
 // @match        https://pr-cockpit.com/*
@@ -26,8 +26,9 @@
           },
           list = {};
     let done = false;
+
     override_xhr();
-    appendUploadCsvButton();
+    setInterval(appendUploadCsvButton, 1000);
 
     let intervalId = setInterval(()=>{
         const authorization = get_http_request_header('Authorization');
@@ -36,8 +37,6 @@
             done = true;
             clearInterval(intervalId);
             intervalId = null;
-            //createContact();
-            //createNextAction();
 
             getMediaList((json)=>{
                 console.log(json);
@@ -52,37 +51,14 @@
                     ids.push(id);
                 });
                 console.log(list);
-                //console.log(emails.join('\n'));
-                //console.log(ids.join('\n'));
-            });
-
-            const media_id = 2612003,
-                  add = 'フリーメモ欄に追記';
-
-            getMediaInfo(media_id, (json)=>{
-                console.log(json);
-                const {data} = json,
-                      {next_action, note} = data,
-                      {id, content, expired_at = ''} = next_action || {},
-                      next_action_id = id,
-                      expired_date = expired_at.split(' ')[0],
-                      update_content = `${add}\n${content}`,
-                      update_note = `${add}\n${note}`;
-
-                console.log(`note: ${note}`);
-                console.log(`update_note: ${update_note}`);
-                console.log(`update_note.length: ${update_note.length}`);
-                console.log(data);
-                console.log(next_action);
-                //updateMemo(media_id, update_note);
-                //updateNextAction(next_action_id, expired_date, update_content);
-                //terminateNextAction(next_action_id);
             });
         }
     }, 2000);
 
     function appendUploadCsvButton() {
-        const report_title = document.querySelector('.report-title'),
+        const {pathname} = location,
+              isDashboard = pathname == '/',
+              report_title = document.querySelector('.report-title'),
               input = document.createElement('input'),
               button = document.createElement('button'),
               klass = 'custom-upload-btn',
@@ -92,7 +68,7 @@
                 padding: 14px 16px;
               }`;
 
-        if (!report_title || document.querySelector(expression)) {
+        if (!isDashboard || !report_title || document.querySelector(expression)) {
             return;
         }
 
@@ -109,58 +85,186 @@
         });
         input.addEventListener('change', (event)=>{
             const target = event.target,
-                  file = target.files[0],
-                  reader = new FileReader();
+                  file = target.files[0];
+            loadCsv(file);
+        });
 
+        function loadCsv(file) {
+            const reader = new FileReader();
             reader.addEventListener('load', ()=>{
-                const arrayBuffer = reader.result,
-                      encoding = detectUtf8OrSjis(arrayBuffer),
-                      text = decodeArrayBuffer(arrayBuffer, encoding),
-                      csv = text.split('\n');
-
-                console.log(`検出エンコーディング: ${encoding}`);
-                console.log(list);
-
-                let mode, content;
-
-                delayedForEach(csv, (row, i)=>{
-                    const col = row.split(','),
-                          data = col[1];
-                    if (i == 0) {
-                        console.log(`data: ${data}`);
-                        switch (data) {
-                            case 'メール送信':
-                            case '資料DL':
-                                mode = contact_kind[data].mode;
-                                content = contact_kind[data].content;
-                                break;
-                        }
-                    } else {
-                        const isId = /^\d+$/.test(data),
-                              contact_date = col[0],
-                              temp = isId ? data : list[data],
-                              media_id_list = Array.isArray(temp) ? temp : [temp],
-                              key = isId ? 'id' : 'メールアドレス',
-                              contact_type_eng = mode;
-
-                        media_id_list.forEach((media_id, i)=>{
-                            const value = isId ? data : `${media_id}(${data})`;
-                            if (media_id) {
-                                console.log(`コンタクトレポートを更新します。\ndate: ${contact_date}\n${key}: ${value}\ncontact_type_eng: ${contact_type_eng}`);
-                                createContact(contact_date, media_id, contact_type_eng, content);
-                            } else if (data) {
-                                console.log(`メディアリストに存在しません: ${data}`);
-                            }
-                        });
-                    }
-                    //col.forEach((cell)=>{
-                    //console.log(cell);
-                    //});
-                }, 1);
+                const arrayBuffer = reader.result;
+                updataByCsv(arrayBuffer);
             });
             reader.readAsArrayBuffer(file);
+        }
+        function updataByCsv(arrayBuffer) {
+            const encoding = detectUtf8OrSjis(arrayBuffer),
+                  text = decodeArrayBuffer(arrayBuffer, encoding),
+                  csv = parseCSV(text);
 
-        });
+            console.log(`検出エンコーディング: ${encoding}`);
+            console.log(list);
+
+            let mode, content;
+
+            delayedForEach(csv, (row, i)=>{
+                const col = row,
+                      data = col[1];
+                // ラベル行
+                if (i == 0) {
+                    const label = checkLabel(data);
+                    mode = label.mode;
+                    content = label.content;
+                // ２行目以降
+                } else if (mode) {
+                    const isId = /^\d+$/.test(data),
+                          contact_date = col[0],
+                          {nextaction_date, nextaction_content, memo} = checkFormat(col),
+                          temp = isId ? data : list[data],
+                          media_id_list = Array.isArray(temp) ? temp : [temp],
+                          key = isId ? 'id' : 'メールアドレス',
+                          contact_type_eng = mode;
+
+                    media_id_list.forEach((media_id, i)=>{
+                        const value = isId ? data : `${media_id}(${data})`;
+                        if (media_id) {
+                            console.log(`コンタクトレポートを更新します。\ndate: ${contact_date}\n${key}: ${value}\ncontact_type_eng: ${contact_type_eng}`);
+                            createContact(contact_date, media_id, contact_type_eng, content);
+                        } else if (data) {
+                            console.log(`メディアリストに存在しません: ${data}`);
+                        }
+
+                        if (nextaction_date || nextaction_content || memo) {
+                            getMediaInfo(media_id, (json)=>{
+                                console.log(json);
+                                const {data} = json,
+                                      {next_action, note = ''} = data,
+                                      {id, content, expired_at = ''} = next_action || {},
+                                      next_action_id = id || media_id,
+                                      isValidDate = /\d{4}\-\d{2}\-\d{2}/.test(nextaction_date),
+                                      isCreateAction = isValidDate && !id,
+                                      isUpdateAction = isValidDate && id,
+                                      isFinishAction = nextaction_date == '完了' && id,
+                                      update_content = nextaction_content ? `${nextaction_content}\n${content}` : content,
+                                      isCreateNote = !note,
+                                      isUpdateNote = note,
+                                      current_note = isCreateNote ? `` : `\n${note}`,
+                                      update_note = memo ? `${memo}${current_note}` : null;
+
+                                if (memo) {
+                                    updateMemo(media_id, update_note);
+                                }
+                                if (isFinishAction) {
+                                    terminateNextAction(next_action_id);
+                                } else if (isCreateAction) {
+                                    createNextAction(media_id, nextaction_date, nextaction_content);
+                                } else if (isUpdateAction) {
+                                    updateNextAction(next_action_id, nextaction_date, update_content);
+                                }
+                            });
+                        }
+                    });
+                }
+            }, 1);
+        }
+        function checkLabel(data) {
+            let mode, content;
+            console.log(`data: ${data}`);
+            switch (data) {
+                case 'ページ遷移':
+                case '資料DL':
+                case 'メール送信':
+                case '電話会話':
+                case '面会':
+                case '掲載前向き検討':
+                case '掲載':
+                case '重要KW露出':
+                case '記者会見参加申込':
+                    mode = contact_kind[data].mode;
+                    content = contact_kind[data].content || data;
+                    break;
+            }
+            return {mode, content};
+        }
+        function checkFormat(col) {
+            let nextaction_date,
+                nextaction_content,
+                memo;
+            const length = col.length;
+            console.log(`length: ${length}`);
+            switch (length) {
+                case 5: // メモ
+                    memo = col[4];
+                    // falls through
+                case 4: // ネクストアクション日
+                    nextaction_date = col[3];
+                    // falls through
+                case 3: // ネクストアクション
+                    nextaction_content = col[2];
+                    break;
+            }
+            return {nextaction_date, nextaction_content, memo};
+        }
+    }
+    /**
+     * CSV文字列を 2 次元配列にパースする
+     * @param {string} text CSV 全体のテキスト
+     * @param {string} [delimiter=','] セル区切り文字（デフォルトはカンマ）
+     * @returns {string[][]} 解析結果の配列
+     */
+    function parseCSV(text, delimiter = ',') {
+        const rows = [];
+        let row = [];
+        let field = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < text.length; i++) {
+            const char = text[i];
+            const nextChar = text[i + 1];
+
+            if (inQuotes) {
+                if (char === '"' && nextChar === '"') {
+                    // エスケープされたダブルクォート
+                    field += '"';
+                    i++; // 次の " をスキップ
+                } else if (char === '"') {
+                    // QUOTE 終了
+                    inQuotes = false;
+                } else {
+                    // 改行も含め、全てをフィールドに追加
+                    field += char;
+                }
+            } else {
+                if (char === '"') {
+                    // QUOTE 開始
+                    inQuotes = true;
+                } else if (char === delimiter) {
+                    // セル区切り
+                    row.push(field);
+                    field = '';
+                } else if (char === '\r') {
+                    // CR は無視（CRLF 対応）
+                    continue;
+                } else if (char === '\n') {
+                    // 行区切り
+                    row.push(field);
+                    rows.push(row);
+                    row = [];
+                    field = '';
+                } else {
+                    // 通常文字
+                    field += char;
+                }
+            }
+        }
+
+        // 最終行の処理（改行で終わらない場合に備えて）
+        if (field !== '' || inQuotes || row.length > 0) {
+            row.push(field);
+            rows.push(row);
+        }
+
+        return rows;
     }
     function delayedForEach(array, func, delaySeconds) {
         function _next(i) {
@@ -234,13 +338,10 @@
             console.log(res);
         });
     }
-    function createNextAction() {
+    function createNextAction(media_id, expired_date, content) {
         const authorization = get_http_request_header('Authorization'),
               method = 'POST',
               path = `/api/v1/client/next-action/add`,
-              expired_date = '2025-04-03',
-              content = 'test',
-              media_id = 2612006,
               params = {expired_date, content, media_id};
         http(method, path, params, authorization, (res)=>{
             console.log(res);
