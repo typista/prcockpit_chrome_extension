@@ -13,6 +13,9 @@
     'use strict';
     const XHR_PER_SEC = 2, // １秒間に最大アクセスは２回
           XHR_WAIT = 1000 / XHR_PER_SEC,
+          WHITE_LIST = [
+              "株式会社ベジタブル電機",
+          ],
           contact_kind_list = {
             'ページ遷移': { contact_type_eng: 'page_transition' },
             '資料DL': { contact_type_eng: 'document_dl', content: '資料ダウンロード' },
@@ -31,8 +34,15 @@
     setInterval(appendUploadCsvButton, 1000);
 
     let intervalId = setInterval(()=>{
-        const authorization = get_http_request_header('Authorization');
+        const authorization = get_http_request_header('Authorization'),
+              clientName = getClientName(),
+              isWhiteList = WHITE_LIST.includes(clientName);
+
         console.log(`authorization: ${authorization}`);
+        console.log(`clientName: ${clientName}`);
+        console.log(`isWhiteList: ${isWhiteList}`);
+        if (!isWhiteList) return;
+
         if (authorization && !done) {
             done = true;
             clearInterval(intervalId);
@@ -55,6 +65,9 @@
         }
     }, 2000);
 
+    function getClientName() {
+        return document.querySelector('.title-logo')?.textContent.trim();
+    }
     function appendUploadCsvButton() {
         const {pathname} = location,
               isDashboard = pathname == '/',
@@ -92,12 +105,109 @@
         function loadCsv(file) {
             const reader = new FileReader();
             reader.addEventListener('load', ()=>{
-                const arrayBuffer = reader.result;
-                updataByCsv(arrayBuffer);
+                const arrayBuffer = reader.result,
+                      params = {};
+                updataByCsv(arrayBuffer, params);
             });
             reader.readAsArrayBuffer(file);
         }
-        function updataByCsv(arrayBuffer, isMultiple = false) {
+        function row2data(row, label) {
+            const data = {};
+            row.forEach((col, i)=>{
+                const key = label[i],
+                      value = col;
+                data[key] = value;
+            });
+            return data;
+        }
+        function data2params(data) {
+            const media_id = data['ID'],
+                  isValidMedia = /\d+$/.test(media_id),
+                  detail = data['コンタクトレポート（詳細）'] || '詳細未記入',
+                  nextaction_date = data['ネクストアクション期限日'],
+                  nextaction_content = data['ネクストアクション内容'],
+                  memo = data['メモ'],
+                  createdAt = data['登録日'],
+                  updatedAt = data['更新日'],
+                  contact_date = updatedAt,
+                  kind_list = Object.keys(contact_kind_list);
+
+            return {media_id, isValidMedia, detail, nextaction_date, nextaction_content, memo, createdAt, contact_date, kind_list};
+        }
+        function data2contact(row, label, params) {
+            params = params || {};
+            const {isDryRun = true, isMultiple = false} = params,
+                  report = [],
+                  data = row2data(row, label),
+                  {media_id, isValidMedia, detail, nextaction_date, nextaction_content, memo, createdAt, contact_date, kind_list} = data2params(data);
+
+            console.log(`isDryRun: ${isDryRun}`);
+            console.log(`isMultiple: ${isMultiple}`);
+
+            delayedForEach(kind_list, (kind)=>{
+                const one = contact_kind_list[kind],
+                      value = data[kind],
+                      count = /^\d+$/.test(value) ? Number(value) : 0,
+                      {contact_type_eng} = one;
+
+                if (isValidMedia) {
+                    for (let i=0; i<count; i++) {
+                        const message = `コンタクトレポートを追加します。\ndate: ${contact_date}\n${kind}: ${value}\n詳細: ${detail}\ncontact_type_eng: ${contact_type_eng}`;
+                        report.push(message);
+                        if (!isDryRun) createContact(contact_date, media_id, contact_type_eng, detail);
+                        if (!isMultiple) break;
+                    }
+                }
+            });
+            return report;
+        }
+        function data2action(row, label, params) {
+            params = params || {};
+            const {isDryRun = true, isMultiple = false} = params,
+                  report = [],
+                  data = row2data(row, label),
+                  {media_id, isValidMedia, detail, nextaction_date, nextaction_content, memo, createdAt, contact_date, kind_list} = data2params(data);
+
+            if (isValidMedia) {
+                getMediaInfo(media_id, (json)=>{
+                    const {data} = json,
+                          {next_action, note = ''} = data || {},
+                          {id, content, expired_at = ''} = next_action || {},
+                          next_action_id = id || media_id,
+                          isValidDate = /\d{4}\-\d{2}\-\d{2}/.test(nextaction_date),
+                          isCreateAction = isValidDate && !id,
+                          isUpdateAction = isValidDate && id,
+                          isFinishAction = nextaction_date == '完了' && id,
+                          update_content = nextaction_content ? `${nextaction_content}\n${content}` : content,
+                          isCreateNote = !note,
+                          isUpdateNote = note,
+                          current_note = isCreateNote ? `` : `\n${note}`,
+                          update_note = memo ? `${memo}${current_note}` : null;
+
+                    if (memo) {
+                        const message = `メモを更新します。\n${update_note}`;
+                        report.push(message);
+                        if (!isDryRun) updateMemo(media_id, update_note);
+                    }
+                    if (isFinishAction) {
+                        const message = `ネクストアクションを完了にします。\nnext_action_id: ${next_action_id}`;
+                        report.push(message);
+                        if (!isDryRun) terminateNextAction(next_action_id);
+                    } else if (isCreateAction) {
+                        const message = `ネクストアクションを作成します。\nmedia_id: ${media_id}\nnextaction_date: ${nextaction_date}\nnextaction_content: ${nextaction_content}`;
+                        report.push(message);
+                        if (!isDryRun) createNextAction(media_id, nextaction_date, nextaction_content);
+                    } else if (isUpdateAction) {
+                        const message = `ネクストアクションを更新します。\nmedia_id: ${media_id}\nnextaction_date: ${nextaction_date}\nupdate_content: ${update_content}\nnext_action_id: ${next_action_id}`;
+                        report.push(message);
+                        if (!isDryRun) updateNextAction(next_action_id, nextaction_date, update_content);
+                    }
+                });
+            }
+            return report;
+        }
+
+        function updataByCsv(arrayBuffer, params) {
             const encoding = detectUtf8OrSjis(arrayBuffer),
                   text = decodeArrayBuffer(arrayBuffer, encoding),
                   csv = parseCSV(text);
@@ -114,74 +224,11 @@
                     label = row;
                 // ２行目以降
                 } else {
-                    const data = {};
-                    row.forEach((col, i)=>{
-                        const key = label[i],
-                              value = col;
-                        data[key] = value;
-                    });
-                    console.log(data);
-                    const media_id = data['ID'],
-                          isValidMedia = /\d+$/.test(media_id),
-                          detail = data['コンタクトレポート（詳細）'] || '詳細未記入',
-                          nextaction_date = data['ネクストアクション期限日'],
-                          nextaction_content = data['ネクストアクション内容'],
-                          memo = data['メモ'],
-                          createdAt = data['登録日'],
-                          updatedAt = data['更新日'],
-                          contact_date = updatedAt,
-                          kind_list = Object.keys(contact_kind_list);
-
-                    delayedForEach(kind_list, (kind)=>{
-                        const one = contact_kind_list[kind],
-                              value = data[kind],
-                              count = /^\d+$/.test(value) ? Number(value) : 0,
-                              {contact_type_eng} = one;
-
-                        if (isValidMedia) {
-                            for (let i=0; i<count; i++) {
-                                console.log(`コンタクトレポートを追加します。\ndate: ${contact_date}\n${kind}: ${value}\n詳細: ${detail}\ncontact_type_eng: ${contact_type_eng}`);
-                                //createContact(contact_date, media_id, contact_type_eng, detail);
-                                if (!isMultiple) {
-                                    break;
-                                }
-                            }
-                        }
-                    });
-
-                    if (isValidMedia) {
-                        getMediaInfo(media_id, (json)=>{
-                            const {data} = json,
-                                  {next_action, note = ''} = data,
-                                  {id, content, expired_at = ''} = next_action || {},
-                                  next_action_id = id || media_id,
-                                  isValidDate = /\d{4}\-\d{2}\-\d{2}/.test(nextaction_date),
-                                  isCreateAction = isValidDate && !id,
-                                  isUpdateAction = isValidDate && id,
-                                  isFinishAction = nextaction_date == '完了' && id,
-                                  update_content = nextaction_content ? `${nextaction_content}\n${content}` : content,
-                                  isCreateNote = !note,
-                                  isUpdateNote = note,
-                                  current_note = isCreateNote ? `` : `\n${note}`,
-                                  update_note = memo ? `${memo}${current_note}` : null;
-
-
-                            if (memo) {
-                                console.log(`メモを更新します。\n${update_note}`);
-//                                updateMemo(media_id, update_note);
-                            }
-                            if (isFinishAction) {
-                                console.log(`ネクストアクションを完了にします。\nnext_action_id: ${next_action_id}`);
-//                                terminateNextAction(next_action_id);
-                            } else if (isCreateAction) {
-                                console.log(`ネクストアクションを作成します。\nmedia_id: ${media_id}\nnextaction_date: ${nextaction_date}\nnextaction_content: ${nextaction_content}`);
-//                                createNextAction(media_id, nextaction_date, nextaction_content);
-                            } else if (isUpdateAction) {
-                                console.log(`ネクストアクションを更新します。\nmedia_id: ${media_id}\nnextaction_date: ${nextaction_date}\nupdate_content: ${update_content}\nnext_action_id: ${next_action_id}`);
-//                                updateNextAction(next_action_id, nextaction_date, update_content);
-                            }
-                        });
-                    }
+                    const log = {
+                            contact: data2contact(row, label, params),
+                            action: data2action(row, label, params),
+                          },
+                          report = log.contact.concat(log.action);
                 }
             });
         }
@@ -513,11 +560,16 @@
             options.body = body;
         }
         if (path) {
-            fetch(path, options)
-                .then(response => response.json())
-                .then(json => {
-                callback(json);
-            });
+            try {
+                fetch(path, options)
+                    .then(response => response.json())
+                    .then(json => {
+                    callback(json);
+                });
+            } catch (err) {
+                console.log(`ERROR !!!!`);
+                console.log(err);
+            }
         }
         function stringify(params) {
             return JSON.stringify(params);
@@ -547,12 +599,6 @@
         };
 
         XMLHttpRequest.prototype.send = function(body) {
-            console.log("XHR Request Intercepted:");
-            console.log("Method:", this._method);
-            console.log("URL:", this._url);
-            console.log("Headers:", this._headers);
-            console.log("Body:", body);
-
             // グローバル変数にヘッダーを保存
             window.globalHeaders = { ...this._headers };
 
