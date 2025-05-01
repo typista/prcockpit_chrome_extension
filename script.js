@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PRコックピット
 // @namespace    https://pr-cockpit.com/
-// @version      0.2.0
+// @version      0.3.0
 // @description  コンタクトレポートの機能改善
 // @author       You
 // @match        https://pr-cockpit.com/*
@@ -13,16 +13,16 @@
     'use strict';
     const XHR_PER_SEC = 2, // １秒間に最大アクセスは２回
           XHR_WAIT = 1000 / XHR_PER_SEC,
-          contact_kind = {
-            'ページ遷移': { mode: 'page_transition' },
-            '資料DL': { mode: 'document_dl', content: '資料ダウンロード' },
-            'メール送信': { mode: 'mail_sent', content: '一斉配信' },
-            '電話会話': { mode: 'phone_conversation' },
-            '面会': { mode: 'visitation' },
-            '掲載前向き検討': { mode: 'publication_consider' },
-            '掲載': { mode: 'publication' },
-            '重要KW露出': { mode: 'keywords' },
-            '記者会見参加申込': { mode: 'expect_press_conference' },
+          contact_kind_list = {
+            'ページ遷移': { contact_type_eng: 'page_transition' },
+            '資料DL': { contact_type_eng: 'document_dl', content: '資料ダウンロード' },
+            'メール送信': { contact_type_eng: 'mail_sent', content: '一斉配信' },
+            '電話会話': { contact_type_eng: 'phone_conversation' },
+            '面会': { contact_type_eng: 'visitation' },
+            '掲載前向き検討': { contact_type_eng: 'publication_consider' },
+            '掲載': { contact_type_eng: 'publication' },
+            '重要KW露出': { contact_type_eng: 'keywords' },
+            '記者会見参加申込': { contact_type_eng: 'expect_press_conference' },
           },
           list = {};
     let done = false;
@@ -97,7 +97,95 @@
             });
             reader.readAsArrayBuffer(file);
         }
-        function updataByCsv(arrayBuffer) {
+        function updataByCsv(arrayBuffer, isMultiple = false) {
+            const encoding = detectUtf8OrSjis(arrayBuffer),
+                  text = decodeArrayBuffer(arrayBuffer, encoding),
+                  csv = parseCSV(text);
+
+            console.log(`検出エンコーディング: ${encoding}`);
+            console.log(list);
+            let label;
+            delayedForEach(csv, (row, i)=>{
+                // ラベル行
+                if (i == 0) {
+                    if (!row.length || row.every(v=>!v.trim())) {
+                        throw new Error('アップロードしたCSVの１行目がブランクです。');
+                    }
+                    label = row;
+                // ２行目以降
+                } else {
+                    const data = {};
+                    row.forEach((col, i)=>{
+                        const key = label[i],
+                              value = col;
+                        data[key] = value;
+                    });
+                    console.log(data);
+                    const media_id = data['ID'],
+                          isValidMedia = /\d+$/.test(media_id),
+                          detail = data['コンタクトレポート（詳細）'] || '詳細未記入',
+                          nextaction_date = data['ネクストアクション期限日'],
+                          nextaction_content = data['ネクストアクション内容'],
+                          memo = data['メモ'],
+                          createdAt = data['登録日'],
+                          updatedAt = data['更新日'],
+                          contact_date = updatedAt,
+                          kind_list = Object.keys(contact_kind_list);
+
+                    delayedForEach(kind_list, (kind)=>{
+                        const one = contact_kind_list[kind],
+                              value = data[kind],
+                              count = /^\d+$/.test(value) ? Number(value) : 0,
+                              {contact_type_eng} = one;
+
+                        if (isValidMedia) {
+                            for (let i=0; i<count; i++) {
+                                console.log(`コンタクトレポートを追加します。\ndate: ${contact_date}\n${kind}: ${value}\n詳細: ${detail}\ncontact_type_eng: ${contact_type_eng}`);
+                                //createContact(contact_date, media_id, contact_type_eng, detail);
+                                if (!isMultiple) {
+                                    break;
+                                }
+                            }
+                        }
+                    });
+
+                    if (isValidMedia) {
+                        getMediaInfo(media_id, (json)=>{
+                            const {data} = json,
+                                  {next_action, note = ''} = data,
+                                  {id, content, expired_at = ''} = next_action || {},
+                                  next_action_id = id || media_id,
+                                  isValidDate = /\d{4}\-\d{2}\-\d{2}/.test(nextaction_date),
+                                  isCreateAction = isValidDate && !id,
+                                  isUpdateAction = isValidDate && id,
+                                  isFinishAction = nextaction_date == '完了' && id,
+                                  update_content = nextaction_content ? `${nextaction_content}\n${content}` : content,
+                                  isCreateNote = !note,
+                                  isUpdateNote = note,
+                                  current_note = isCreateNote ? `` : `\n${note}`,
+                                  update_note = memo ? `${memo}${current_note}` : null;
+
+
+                            if (memo) {
+                                console.log(`メモを更新します。\n${update_note}`);
+//                                updateMemo(media_id, update_note);
+                            }
+                            if (isFinishAction) {
+                                console.log(`ネクストアクションを完了にします。\nnext_action_id: ${next_action_id}`);
+//                                terminateNextAction(next_action_id);
+                            } else if (isCreateAction) {
+                                console.log(`ネクストアクションを作成します。\nmedia_id: ${media_id}\nnextaction_date: ${nextaction_date}\nnextaction_content: ${nextaction_content}`);
+//                                createNextAction(media_id, nextaction_date, nextaction_content);
+                            } else if (isUpdateAction) {
+                                console.log(`ネクストアクションを更新します。\nmedia_id: ${media_id}\nnextaction_date: ${nextaction_date}\nupdate_content: ${update_content}\nnext_action_id: ${next_action_id}`);
+//                                updateNextAction(next_action_id, nextaction_date, update_content);
+                            }
+                        });
+                    }
+                }
+            });
+        }
+        function ________updataByCsv(arrayBuffer) {
             const encoding = detectUtf8OrSjis(arrayBuffer),
                   text = decodeArrayBuffer(arrayBuffer, encoding),
                   csv = parseCSV(text);
@@ -266,7 +354,7 @@
 
         return rows;
     }
-    function delayedForEach(array, func, delaySeconds) {
+    function delayedForEach(array, func, delaySeconds = 1) {
         function _next(i) {
             if (i >= array.length) return;
             func(array[i], i);
@@ -315,7 +403,6 @@
               path = `/api/v1/client/medias?${queryString}`,
               params = null;
         http(method, path, params, authorization, (res)=>{
-            console.log(res);
             callback(res);
         });
     }
@@ -325,7 +412,6 @@
               path = `/api/v1/client/medias/${media_id}`,
               params = null;
         http(method, path, params, authorization, (res)=>{
-            console.log(res);
             callback(res);
         });
     }
