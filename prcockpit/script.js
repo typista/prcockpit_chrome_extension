@@ -75,7 +75,6 @@
             text-align: center;
         `;
         appendStyle(style);
-        formatNumber();
     }
     function getClientName() {
         return document.querySelector('.title-logo')?.textContent.trim();
@@ -89,7 +88,11 @@
     }
     function beautify() {
         const {pathname} = location,
+              isDashboard = pathname == '/',
               isMediaList = pathname == '/media-list';
+        if (isDashboard) {
+            formatNumber();
+        }
         if (isMediaList) {
             const css = `
                 table td:nth-of-type(1) {

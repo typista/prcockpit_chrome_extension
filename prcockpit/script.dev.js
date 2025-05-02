@@ -75,7 +75,6 @@
             text-align: center;
         `;
         appendStyle(style);
-        formatNumber();
     }
     function getClientName() {
         return document.querySelector('.title-logo')?.textContent.trim();
@@ -84,12 +83,21 @@
         document.querySelectorAll('.amount .number,.detail .point,.pieces .num,.s-point').forEach((v)=>{
             const text = v.textContent.trim(),
                   num = Number(text).toLocaleString();
+            if (/^\d+$/.test(text)) v.textContent = num;
+        });
+        document.querySelectorAll('.text-black,.blue').forEach((v)=>{
+            const text = v.textContent.trim(),
+                  num = text.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
             v.textContent = num;
         });
     }
     function beautify() {
         const {pathname} = location,
+              isDashboard = pathname == '/',
               isMediaList = pathname == '/media-list';
+        if (isDashboard) {
+            formatNumber();
+        }
         if (isMediaList) {
             const css = `
                 table td:nth-of-type(1) {
