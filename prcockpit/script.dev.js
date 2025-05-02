@@ -91,12 +91,72 @@
             v.textContent = num;
         });
     }
+    function insertPagination(isStyleAdd = true) {
+        const expression = {
+                origin: '.pagination.paging',
+                clone: 'pagination-clone',
+              },
+              isDone = document.querySelectorAll(expression.origin)?.length == 2,
+              origin = document.querySelector(expression.origin),
+              clone = document.querySelector(`.${expression.clone}`),
+              pagination = origin.cloneNode(true),
+              container = {
+                  table: document.querySelector('.table-info'),
+                  pagination: clone || document.createElement('div'),
+              },
+              style = `
+                  .pagination-clone {
+                      margin-top: 16px;
+                      margin-bottom: 16px;
+                      height: 32px;
+                  }
+              `;
+
+        if (!isDone) {
+          if (isStyleAdd) {
+            appendStyle(style);
+          }
+          container.pagination.classList.add(expression.clone);
+          container.pagination.appendChild(pagination);
+          container.table.before(container.pagination);
+          const paginationNew = pagination.querySelectorAll('li.page-item'),
+                paginationOrg = origin.querySelectorAll('li.page-item');
+          paginationNew.forEach((li, i)=>{
+              li.addEventListener('click', (event)=>{
+                  const target = event.target,
+                        active = target.closest('ul').querySelectorAll('.active'),
+                        navi = (target.querySelector('a') || target),
+                        text = navi.textContent.trim(),
+                        isNumber = /^\d+$/.test(text),
+                        element = isNumber ? paginationOrg[i] : paginationOrg[i].querySelector('button');
+
+                  console.log(`i: ${i}`);
+                  console.log(`text: ${text}`);
+                  console.log(paginationOrg[i]);
+                  element?.click();
+                  pagination.remove();
+                  setTimeout(()=>{
+                    insertPagination(false);
+                  }, 1000);
+                  /*
+                  active.forEach((a)=>{
+                      a.classList.remove('active');
+                  });
+                  if (isNumber) {
+                    (target.querySelector('a') || target).classList.add('active');
+                  }
+                  */
+              });
+          });
+        }
+    }
     function beautify() {
         const {pathname} = location,
               isDashboard = pathname == '/',
               isMediaList = pathname == '/media-list';
         if (isDashboard) {
             formatNumber();
+            insertPagination();
         }
         if (isMediaList) {
             const css = `
