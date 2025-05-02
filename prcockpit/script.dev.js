@@ -540,8 +540,6 @@
         const {data} = json,
               table = document.querySelectorAll('#report table tr');
 
-        console.log(json);
-        console.log(table);
         table?.forEach((tr, i)=>{
             if (i > 0) {
                 const index = i - 1,
@@ -551,15 +549,10 @@
                       detail = td?.textContent?.trim(),
                       html = `<input type="text" class="media_id" value="${media_id}"><span>${detail}</span>`;
 
-                console.log(td);
-                console.log(`i: ${i}, index: ${index}`);
-                console.log(`media_id: ${media_id}`);
-                console.log(`detail: ${detail}`);
                 td.innerHTML = html;
                 td.querySelector('.media_id').addEventListener('mouseover', (event)=>{
                     const target = event.target,
                           media_id = target.value;
-                    console.log(`media_id: ${media_id}`);
                     target.focus();
                     target.select();
                 });
