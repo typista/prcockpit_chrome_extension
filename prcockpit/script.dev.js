@@ -233,6 +233,9 @@
                 }
             });
             console.log(report);
+            setTimeout(async()=>{
+              location.reload();
+            }, 1000);
         }
     }
     /**
