@@ -109,6 +109,10 @@
                       margin-top: 16px;
                       margin-bottom: 16px;
                       height: 32px;
+
+                      .result-display {
+                          display: none !important;
+                      }
                   }
               `;
 
