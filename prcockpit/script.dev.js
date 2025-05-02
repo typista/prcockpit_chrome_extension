@@ -74,9 +74,17 @@
             text-align: center;
         `;
         appendStyle(style);
+        formatNumber();
     }
     function getClientName() {
         return document.querySelector('.title-logo')?.textContent.trim();
+    }
+    function formatNumber() {
+        document.querySelectorAll('.amount .number,.detail .point,.pieces .num,.s-point').forEach((v)=>{
+            const text = v.textContent.trim(),
+                  num = Number(text).toLocaleString();
+            v.textContent = num;
+        });
     }
     function appendUploadCsvButton() {
         const {pathname} = location,
