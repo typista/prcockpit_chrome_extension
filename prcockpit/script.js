@@ -260,6 +260,13 @@
                 format = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
           return format;
         }
+        function loading(isShow) {
+            const display = isShow ? '' : 'none',
+                  overlay = document.querySelector('[aria-label="Loading"]');
+            console.log(overlay);
+            console.log(`display: ${display}`);
+            overlay.style.display = display;
+        }
         async function updataByCsv(arrayBuffer, params) {
             const encoding = detectUtf8OrSjis(arrayBuffer),
                   text = decodeArrayBuffer(arrayBuffer, encoding),
@@ -268,6 +275,7 @@
             console.log(`検出エンコーディング: ${encoding}`);
             console.log(list);
             let label, report = [];
+            loading(true);
             await delayedForEach(csv, async(row, i)=>{
                 // ラベル行
                 if (i == 0) {
@@ -289,6 +297,7 @@
             });
             console.log(report);
             setTimeout(async()=>{
+              loading(false);
               location.reload();
             }, 1000);
         }
