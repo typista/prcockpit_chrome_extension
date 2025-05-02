@@ -91,12 +91,87 @@
             v.textContent = num;
         });
     }
+    function insertPagination(isStyleAdd = true) {
+        const expression = {
+                origin: '.pagination.paging',
+                clone: 'pagination-clone',
+              },
+              isDone = document.querySelectorAll(expression.origin)?.length == 2,
+              origin = document.querySelector(expression.origin),
+              clone = document.querySelector(`.${expression.clone}`),
+              pagination = origin.cloneNode(true),
+              container = {
+                  table: document.querySelector('.table-info'),
+                  pagination: clone || document.createElement('div'),
+              },
+              style = `
+                  .pagination-clone {
+                      margin-top: 16px;
+                      margin-bottom: 16px;
+                      height: 32px;
+
+                      .result-display {
+                          display: none !important;
+                      }
+                  }
+              `;
+
+        if (!isDone) {
+          if (isStyleAdd) {
+            appendStyle(style);
+          }
+          container.pagination.classList.add(expression.clone);
+          container.pagination.appendChild(pagination);
+          if (!clone) {
+              container.table.before(container.pagination);
+          }
+
+          const paginationNew = pagination.querySelectorAll('li.page-item'),
+                paginationOrg = origin.querySelectorAll('li.page-item'),
+                dropdown = origin.querySelector('.custom-select .multiselect-wrapper');
+          paginationNew.forEach((li, i)=>{
+              li.addEventListener('click', (event)=>{
+                  const target = event.target,
+                        navi = (target.querySelector('a') || target),
+                        text = navi.textContent.trim(),
+                        isNumber = /^\d+$/.test(text),
+                        element = isNumber ? paginationOrg[i] : paginationOrg[i].querySelector('button');
+
+                  element?.click();
+              });
+          });
+          paginationOrg.forEach((li, i)=>{
+              li.addEventListener('click', (event)=>{
+                  pagination.remove();
+                  setTimeout(()=>{
+                    insertPagination(false);
+                  }, 1000);
+              });
+          });
+          if (!dropdown.classList.contains('observed')) {
+              dropdown.classList.add('observed');
+              const observer = new MutationObserver(()=>{
+                  console.log('observer');
+                  console.log(pagination);
+                  //pagination.remove();
+                  //container.pagination.remove();
+                  document.querySelector('.pagination-clone > div')?.remove();
+                  setTimeout(()=>{
+                      console.log('insertPagination');
+                      //insertPagination(false);
+                  }, 3000);
+              });
+              observer.observe(dropdown, {attributes: true, childList: true, subtree: true, characterData: true});
+          }
+        }
+    }
     function beautify() {
         const {pathname} = location,
               isDashboard = pathname == '/',
               isMediaList = pathname == '/media-list';
         if (isDashboard) {
             formatNumber();
+            insertPagination();
         }
         if (isMediaList) {
             const css = `
