@@ -20,6 +20,7 @@
     let done = false;
 
     init();
+    beautify();
     override_xhr();
     setInterval(appendUploadCsvButton, 1000);
 
@@ -85,6 +86,18 @@
                   num = Number(text).toLocaleString();
             v.textContent = num;
         });
+    }
+    function beautify() {
+        const {pathname} = location,
+              isMediaList = pathname == '/media-list';
+        if (isMediaList) {
+            const css = `
+                table td:nth-of-type(1) {
+                    width: 90px;
+                }
+            `;
+            appendStyle(css);
+        }
     }
     function appendUploadCsvButton() {
         const {pathname} = location,
