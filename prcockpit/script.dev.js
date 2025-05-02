@@ -21,6 +21,7 @@
 
     override_xhr();
     setInterval(appendUploadCsvButton, 1000);
+    document.querySelector('#report li').click(); // XHRをフックしてAuthorizationを取得する
 
     let intervalId = setInterval(()=>{
         const authorization = get_http_request_header('Authorization'),
