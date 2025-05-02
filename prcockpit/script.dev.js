@@ -19,6 +19,7 @@
           list = {};
     let done = false;
 
+    init();
     override_xhr();
     setInterval(appendUploadCsvButton, 1000);
 
@@ -33,6 +34,7 @@
         console.log(`authorization: ${authorization}`);
         console.log(`clientName: ${clientName}`);
         console.log(`isWhiteList: ${isWhiteList}`);
+        console.log(window.globalHeaders);
         if (!isWhiteList) return;
 
         if (isDisabled) {
@@ -64,6 +66,15 @@
         }
     }, 2000);
 
+    function init() {
+        const style = `.media_id {
+            width: 80px;
+            margin-right: 4px;
+            padding: 4px;
+            text-align: center;
+        `;
+        appendStyle(style);
+    }
     function getClientName() {
         return document.querySelector('.title-logo')?.textContent.trim();
     }
@@ -487,7 +498,100 @@
     function get_http_request_header(key) {
         return window.globalHeaders[key];
     }
+    function updateReportInfo(json) {
+        const {data} = json,
+              table = document.querySelectorAll('#report table tr');
+
+        console.log(json);
+        console.log(table);
+        table?.forEach((tr, i)=>{
+            if (i > 0) {
+                const index = i - 1,
+                      cur = data[index] || {},
+                      {media_id} = cur,
+                      td = tr.querySelector('.details-field'),
+                      detail = td?.textContent?.trim(),
+                      html = `<input type="text" class="media_id" value="${media_id}"><span>${detail}</span>`;
+
+                console.log(td);
+                console.log(`i: ${i}, index: ${index}`);
+                console.log(`media_id: ${media_id}`);
+                console.log(`detail: ${detail}`);
+                td.innerHTML = html;
+                td.querySelector('.media_id').addEventListener('mouseover', (event)=>{
+                    const target = event.target,
+                          media_id = target.value;
+                    console.log(`media_id: ${media_id}`);
+                    target.focus();
+                    target.select();
+                });
+            }
+        });
+    }
     function override_xhr() {
+        const originalOpen = XMLHttpRequest.prototype.open;
+        const originalSend = XMLHttpRequest.prototype.send;
+        const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+    
+        // ヘッダーを保存するグローバル変数
+        window.globalHeaders = {};
+
+        XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
+            this._method = method;
+            this._url = url;
+            this._headers = {}; // ヘッダーを保存するためのオブジェクト
+            return originalOpen.apply(this, arguments);
+        };
+    
+        XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
+            this._headers[header] = value; // ヘッダーを記録
+            return originalSetRequestHeader.apply(this, arguments);
+        };
+
+        XMLHttpRequest.prototype.send = function(body) {
+            // グローバル変数にヘッダーを保存
+            window.globalHeaders = { ...this._headers };
+
+            const xhr = this;
+    
+            function shouldCapture(url) {
+                return url.indexOf('/api/v1/client/reports') == 0;
+            }
+    
+            const onReady = function() {
+                if (xhr.readyState === 4) {
+                    if (shouldCapture(xhr._url)) {
+                        console.log("✅ Captured response for:", xhr._url);
+                        //console.log("📦 Response body:", xhr.responseText);
+                        const json = JSON.parse(xhr.responseText);
+                        console.log(json);
+                        if (json) {
+                          setTimeout(()=>{
+                              updateReportInfo(json);
+                          }, 2000);
+                        }
+    
+                        // ここで保存（例: localStorage へ保存など）
+                        //localStorage.setItem("response:" + xhr._url, xhr.responseText);
+                    }
+                }
+            };
+    
+            // 複数回バインドしないように慎重に登録
+            if (this.addEventListener) {
+                this.addEventListener("readystatechange", onReady, false);
+            } else {
+                const oldHandler = this.onreadystatechange;
+                this.onreadystatechange = function() {
+                    if (typeof oldHandler === "function") oldHandler.apply(this, arguments);
+                    onReady();
+                };
+            }
+    
+            return originalSend.apply(this, arguments);
+        };
+    }
+    function _override_xhr() {
         const originalOpen = XMLHttpRequest.prototype.open;
         const originalSend = XMLHttpRequest.prototype.send;
         const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
