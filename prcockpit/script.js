@@ -42,6 +42,10 @@
                 const {code, current_page, data, message, total} = json,
                       emails = [],
                       ids = [];
+                console.log(data);
+                if (data.length) {
+                  document.querySelector('.custom-upload-btn')?.removeAttribute('disabled');
+                }
                 data.forEach((v)=>{
                     const {id, management_mail} = v;
                     list[management_mail] = list[management_mail] || [];
@@ -78,6 +82,7 @@
         input.type = 'file';
         input.accept = 'text/csv';
         input.style.display = 'none';
+        button.disabled = 'true';
         button.textContent = 'CSVアップロード';
         button.classList.add('sign-up-btn', klass);
         report_title.appendChild(input);
