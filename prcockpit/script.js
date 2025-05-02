@@ -20,7 +20,7 @@
     let done = false;
 
     init();
-    beautify();
+    setInterval(beautify, 2000);
     override_xhr();
     setInterval(appendUploadCsvButton, 1000);
 
@@ -97,6 +97,25 @@
                 }
             `;
             appendStyle(css);
+            document.querySelectorAll('table tr').forEach((tr)=>{
+                const td = tr.querySelector('td:nth-of-type(1)'),
+                      done = td?.querySelector('.media_id'),
+                      text = td?.textContent.trim(),
+                      isNumeric = /^\d+$/.test(text),
+                      html = `<input type="text" class="media_id" value="${text}">`;
+                console.log(td);
+                if (isNumeric && !done) {
+                    td.innerHTML = html;
+                    td.classList.add('done');
+                    td.querySelector('.media_id').addEventListener('mouseover', (event)=>{
+                        const target = event.target,
+                              media_id = target.value;
+                        console.log(`media_id: ${media_id}`);
+                        target.focus();
+                        target.select();
+                    });
+                }
+            });
         }
     }
     function appendUploadCsvButton() {
