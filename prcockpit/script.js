@@ -83,6 +83,11 @@
         document.querySelectorAll('.amount .number,.detail .point,.pieces .num,.s-point').forEach((v)=>{
             const text = v.textContent.trim(),
                   num = Number(text).toLocaleString();
+            if (/^\d+$/.test(text)) v.textContent = num;
+        });
+        document.querySelectorAll('.text-black,.blue').forEach((v)=>{
+            const text = v.textContent.trim(),
+                  num = text.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
             v.textContent = num;
         });
     }
