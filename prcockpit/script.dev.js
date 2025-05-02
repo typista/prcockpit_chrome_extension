@@ -122,36 +122,47 @@
           }
           container.pagination.classList.add(expression.clone);
           container.pagination.appendChild(pagination);
-          container.table.before(container.pagination);
+          if (!clone) {
+              container.table.before(container.pagination);
+          }
+
           const paginationNew = pagination.querySelectorAll('li.page-item'),
-                paginationOrg = origin.querySelectorAll('li.page-item');
+                paginationOrg = origin.querySelectorAll('li.page-item'),
+                dropdown = origin.querySelector('.custom-select .multiselect-wrapper');
           paginationNew.forEach((li, i)=>{
               li.addEventListener('click', (event)=>{
                   const target = event.target,
-                        active = target.closest('ul').querySelectorAll('.active'),
                         navi = (target.querySelector('a') || target),
                         text = navi.textContent.trim(),
                         isNumber = /^\d+$/.test(text),
                         element = isNumber ? paginationOrg[i] : paginationOrg[i].querySelector('button');
 
-                  console.log(`i: ${i}`);
-                  console.log(`text: ${text}`);
-                  console.log(paginationOrg[i]);
                   element?.click();
+              });
+          });
+          paginationOrg.forEach((li, i)=>{
+              li.addEventListener('click', (event)=>{
                   pagination.remove();
                   setTimeout(()=>{
                     insertPagination(false);
                   }, 1000);
-                  /*
-                  active.forEach((a)=>{
-                      a.classList.remove('active');
-                  });
-                  if (isNumber) {
-                    (target.querySelector('a') || target).classList.add('active');
-                  }
-                  */
               });
           });
+          if (!dropdown.classList.contains('observed')) {
+              dropdown.classList.add('observed');
+              const observer = new MutationObserver(()=>{
+                  console.log('observer');
+                  console.log(pagination);
+                  //pagination.remove();
+                  //container.pagination.remove();
+                  document.querySelector('.pagination-clone > div')?.remove();
+                  setTimeout(()=>{
+                      console.log('insertPagination');
+                      //insertPagination(false);
+                  }, 3000);
+              });
+              observer.observe(dropdown, {attributes: true, childList: true, subtree: true, characterData: true});
+          }
         }
     }
     function beautify() {
