@@ -21,18 +21,23 @@
 
     override_xhr();
     setInterval(appendUploadCsvButton, 1000);
-    document.querySelector('#report li').click(); // XHRをフックしてAuthorizationを取得する
 
     let intervalId = setInterval(()=>{
         const authorization = get_http_request_header('Authorization'),
               clientName = getClientName(),
-              isWhiteList = WHITE_LIST.includes(clientName);
+              isWhiteList = WHITE_LIST.includes(clientName),
+              uploadButton = document.querySelector('.custom-upload-btn'),
+              reportAllButton = document.querySelector('#report li'),
+              isDisabled = uploadButton?.getAttribute('disabled');
 
         console.log(`authorization: ${authorization}`);
         console.log(`clientName: ${clientName}`);
         console.log(`isWhiteList: ${isWhiteList}`);
         if (!isWhiteList) return;
 
+        if (isDisabled) {
+            reportAllButton?.click(); // XHRをフックしてAuthorizationを取得する
+        }
         if (authorization && !done) {
             done = true;
             clearInterval(intervalId);
@@ -45,7 +50,7 @@
                       ids = [];
                 console.log(data);
                 if (data.length) {
-                  document.querySelector('.custom-upload-btn')?.removeAttribute('disabled');
+                  uploadButton?.removeAttribute('disabled');
                 }
                 data.forEach((v)=>{
                     const {id, management_mail} = v;
