@@ -105,6 +105,9 @@
                   pagination: clone || document.createElement('div'),
               },
               style = `
+                  .header-field {
+                      z-index: 4 !important;
+                  }
                   .pagination-clone {
                       margin-top: 16px;
                       margin-bottom: 16px;
