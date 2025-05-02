@@ -130,14 +130,14 @@
 
             return {media_id, isValidMedia, detail, nextaction_date, nextaction_content, memo, createdAt, contact_date, kind_list};
         }
-        function data2contact(row, label, params) {
+        async function data2contact(row, label, params) {
             params = params || {};
             const {isDryRun = true, isMultiple = false} = params,
                   report = [],
                   data = row2data(row, label),
                   {media_id, isValidMedia, detail, nextaction_date, nextaction_content, memo, createdAt, contact_date, kind_list} = data2params(data);
 
-            delayedForEach(kind_list, (kind)=>{
+            await delayedForEach(kind_list, async(kind)=>{
                 const one = contact_kind_list[kind],
                       value = data[kind],
                       count = /^\d+$/.test(value) ? Number(value) : 0,
@@ -147,14 +147,14 @@
                     for (let i=0; i<count; i++) {
                         const message = `コンタクトレポートを追加します。\ndate: ${contact_date}\n${kind}: ${value}\n詳細: ${detail}\ncontact_type_eng: ${contact_type_eng}`;
                         report.push(message);
-                        if (!isDryRun) createContact(contact_date, media_id, contact_type_eng, detail);
+                        if (!isDryRun) await createContact(contact_date, media_id, contact_type_eng, detail);
                         if (!isMultiple) break;
                     }
                 }
             });
             return report;
         }
-        function data2action(row, label, params) {
+        async function data2action(row, label, params) {
             params = params || {};
             const {isDryRun = true, isMultiple = false} = params,
                   report = [],
@@ -162,7 +162,7 @@
                   {media_id, isValidMedia, detail, nextaction_date, nextaction_content, memo, createdAt, contact_date, kind_list} = data2params(data);
 
             if (isValidMedia) {
-                getMediaInfo(media_id, (json)=>{
+                await getMediaInfo(media_id, async(json)=>{
                     const {data} = json,
                           {next_action, note = ''} = data || {},
                           {id, content, expired_at = ''} = next_action || {},
@@ -180,20 +180,20 @@
                     if (memo) {
                         const message = `メモを更新します。\n${update_note}`;
                         report.push(message);
-                        if (!isDryRun) updateMemo(media_id, update_note);
+                        if (!isDryRun) await updateMemo(media_id, update_note);
                     }
                     if (isFinishAction) {
                         const message = `ネクストアクションを完了にします。\nnext_action_id: ${next_action_id}`;
                         report.push(message);
-                        if (!isDryRun) terminateNextAction(next_action_id);
+                        if (!isDryRun) await terminateNextAction(next_action_id);
                     } else if (isCreateAction) {
                         const message = `ネクストアクションを作成します。\nmedia_id: ${media_id}\nnextaction_date: ${nextaction_date}\nnextaction_content: ${nextaction_content}`;
                         report.push(message);
-                        if (!isDryRun) createNextAction(media_id, nextaction_date, nextaction_content);
+                        if (!isDryRun) await createNextAction(media_id, nextaction_date, nextaction_content);
                     } else if (isUpdateAction) {
                         const message = `ネクストアクションを更新します。\nmedia_id: ${media_id}\nnextaction_date: ${nextaction_date}\nupdate_content: ${update_content}\nnext_action_id: ${next_action_id}`;
                         report.push(message);
-                        if (!isDryRun) updateNextAction(next_action_id, nextaction_date, update_content);
+                        if (!isDryRun) await updateNextAction(next_action_id, nextaction_date, update_content);
                     }
                 });
             }
@@ -205,7 +205,7 @@
                 format = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
           return format;
         }
-        function updataByCsv(arrayBuffer, params) {
+        async function updataByCsv(arrayBuffer, params) {
             const encoding = detectUtf8OrSjis(arrayBuffer),
                   text = decodeArrayBuffer(arrayBuffer, encoding),
                   csv = parseCSV(text);
@@ -213,7 +213,7 @@
             console.log(`検出エンコーディング: ${encoding}`);
             console.log(list);
             let label, report = [];
-            delayedForEach(csv, (row, i)=>{
+            await delayedForEach(csv, async(row, i)=>{
                 // ラベル行
                 if (i == 0) {
                     if (!row.length || row.every(v=>!v.trim())) {
@@ -223,8 +223,8 @@
                 // ２行目以降
                 } else {
                     const log = {
-                            contact: data2contact(row, label, params),
-                            action: data2action(row, label, params),
+                            contact: await data2contact(row, label, params),
+                            action: await data2action(row, label, params),
                           };
                     
                     console.log(log.contact);
@@ -295,14 +295,20 @@
 
         return rows;
     }
-    function delayedForEach(array, func, delaySeconds = 1) {
-        function _next(i) {
-            if (i >= array.length) return;
-            func(array[i], i);
-            setTimeout(() => _next(i + 1), delaySeconds * XHR_WAIT);
-        }
-        _next(0);
+    async function delayedForEach(array, func, delaySeconds = 1) {
+      async function _next(i) {
+        if (i >= array.length) return;
+        await func(array[i], i);
+        // ここで待機してから次を呼び出す
+        await wait(delaySeconds * XHR_WAIT);
+        await _next(i + 1);
+      }
+      await _next(0);
     }
+    function wait(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
     /**
      * ArrayBuffer を指定エンコーディングで文字列化する
      * @param {ArrayBuffer} arrayBuffer
@@ -333,7 +339,7 @@
             return 'shift_jis';
         }
     }
-    function getMediaList(callback) {
+    async function getMediaList(callback) {
         const authorization = get_http_request_header('Authorization'),
               method = 'GET',
               page = 1,
@@ -343,57 +349,57 @@
               queryString = Object.keys(query).map(v=>`${v}=${query[v]}`).join('&'),
               path = `/api/v1/client/medias?${queryString}`,
               params = null;
-        http(method, path, params, authorization, (res)=>{
+        await http(method, path, params, authorization, async(res)=>{
             callback(res);
         });
     }
-    function getMediaInfo(media_id, callback) {
+    async function getMediaInfo(media_id, callback) {
         const authorization = get_http_request_header('Authorization'),
               method = 'GET',
               path = `/api/v1/client/medias/${media_id}`,
               params = null;
-        http(method, path, params, authorization, (res)=>{
+        await http(method, path, params, authorization, async(res)=>{
             callback(res);
         });
     }
-    function updateMemo(id, note) {
+    async function updateMemo(id, note) {
         const authorization = get_http_request_header('Authorization'),
               method = 'POST',
               path = `/api/v1/client/medias/note/edit`,
               params = {id, note};
-        http(method, path, params, authorization, (res)=>{
+        await http(method, path, params, authorization, async(res)=>{
             console.log(res);
         });
     }
-    function createNextAction(media_id, expired_date, content) {
+    async function createNextAction(media_id, expired_date, content) {
         const authorization = get_http_request_header('Authorization'),
               method = 'POST',
               path = `/api/v1/client/next-action/add`,
               params = {expired_date, content, media_id};
-        http(method, path, params, authorization, (res)=>{
+        await http(method, path, params, authorization, async(res)=>{
             console.log(res);
         });
     }
-    function updateNextAction(next_action_id, expired_date, content) {
+    async function updateNextAction(next_action_id, expired_date, content) {
         const authorization = get_http_request_header('Authorization'),
               method = 'POST',
               path = `/api/v1/client/next-action/${next_action_id}/edit`,
               media_id = next_action_id,
               params = {expired_date, content, media_id};
-        http(method, path, params, authorization, (res)=>{
+        await http(method, path, params, authorization, async(res)=>{
             console.log(res);
         });
     }
-    function terminateNextAction(action_id) {
+    async function terminateNextAction(action_id) {
         const authorization = get_http_request_header('Authorization'),
               method = 'POST',
               path = `/api/v1/client/action/finish`,
               params = {action_id};
-        http(method, path, params, authorization, (res)=>{
+        await http(method, path, params, authorization, async(res)=>{
             console.log(res);
         });
     }
-    function createContact(contact_date, media_id, contact_type_eng, content = '') {
+    async function createContact(contact_date, media_id, contact_type_eng, content = '') {
         const authorization = get_http_request_header('Authorization'),
               method = 'POST',
               path = `/api/v1/client/reports/add`,
@@ -411,7 +417,7 @@
               //media_id = 2794491,
               params = {contact_date, contact_type_eng, content, media_id};
 
-        http(method, path, params, authorization, (res)=>{
+        await http(method, path, params, authorization, async(res)=>{
             console.log(res);
         });
     }
@@ -426,7 +432,7 @@
         }
         return ''
     }
-    function http(method, path, params, authorization, callback) {
+    async function http(method, path, params, authorization, callback) {
 		const {host, pathname} = location,
               cookie = document.cookie,
               token = getCookieValue('XSRF-TOKEN'),
@@ -455,7 +461,7 @@
         }
         if (path) {
             try {
-                fetch(path, options)
+                await fetch(path, options)
                     .then(response => response.json())
                     .then(json => {
                     callback(json);
