@@ -717,33 +717,6 @@
             return originalSend.apply(this, arguments);
         };
     }
-    function _override_xhr() {
-        const originalOpen = XMLHttpRequest.prototype.open;
-        const originalSend = XMLHttpRequest.prototype.send;
-        const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
-
-        // ヘッダーを保存するグローバル変数
-        window.globalHeaders = {};
-
-        XMLHttpRequest.prototype.open = function(method, url, async, user, password) {
-            this._url = url;
-            this._method = method;
-            this._headers = {}; // ヘッダーを保存するためのオブジェクト
-            return originalOpen.apply(this, arguments);
-        };
-
-        XMLHttpRequest.prototype.setRequestHeader = function(header, value) {
-            this._headers[header] = value; // ヘッダーを記録
-            return originalSetRequestHeader.apply(this, arguments);
-        };
-
-        XMLHttpRequest.prototype.send = function(body) {
-            // グローバル変数にヘッダーを保存
-            window.globalHeaders = { ...this._headers };
-
-            return originalSend.apply(this, arguments);
-        };
-    }
     function appendStyle(css) {
         const style = document.createElement('style');
         style.textContent = css;
