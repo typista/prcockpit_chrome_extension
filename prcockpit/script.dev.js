@@ -4,6 +4,7 @@
           XHR_WAIT = 1000 / XHR_PER_SEC,
           WHITE_LIST = [
               "株式会社ベジタブル電機",
+              "日本リスクコミュニケーション協会",
           ],
           contact_kind_list = {
             'ページ遷移': { contact_type_eng: 'page_transition' },
